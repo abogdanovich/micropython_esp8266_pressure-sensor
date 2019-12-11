@@ -4,8 +4,9 @@ Utility to setup some environment
 import time
 import machine
 import network
+import urandom
 from libs import ssd1306
-from libs.umqtt import MQTTClient
+from libs.umqtt_simple import MQTTClient
 from settings import settings
 
 wlan = network.WLAN(network.STA_IF)
@@ -46,7 +47,7 @@ def i2c_setup():
     i2c = machine.I2C(-1, scl=machine.Pin(settings.I2C_SCL), sda=machine.Pin(settings.I2C_SDA))
     lcd = ssd1306.SSD1306_I2C(settings.LCD_WIDTH, settings.LCD_HEIGHT, i2c)
     lcd.fill(0)  # clear screen
-    lcd.text('lcd init!', (settings.LCD_WIDTH/2)-10, settings.LCD_HEIGHT/2)
+    lcd.text('lcd init!', (int(settings.LCD_WIDTH / 2)) - 30, int(settings.LCD_HEIGHT / 2))
     lcd.show()
     return lcd
 
@@ -63,3 +64,11 @@ def adc_read_data(adc):
 def module_reset():
     time.sleep(1)
     machine.reset()
+
+
+def randint(min, max):
+    span = max - min + 1
+    div = 0x3fffffff // span
+    offset = urandom.getrandbits(30) // div
+    val = min + offset
+    return val
