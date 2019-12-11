@@ -4,8 +4,8 @@ Utility to setup some environment
 import time
 import machine
 import network
-from lib import ssd1306
-from lib.umqtt import MQTTClient
+from libs import ssd1306
+from libs.umqtt import MQTTClient
 from settings import settings
 
 wlan = network.WLAN(network.STA_IF)
