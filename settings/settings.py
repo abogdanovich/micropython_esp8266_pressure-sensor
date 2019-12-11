@@ -11,7 +11,7 @@ WIFI_PASSWORD = 'sensorium'
 
 # MQTT connection data
 MQTT_CLIENT_ID = 'esp_micropython_client_id'
-MQTT_SERVER_URL = 'http://523d06922fa4.sn.mynetname.net/'
+MQTT_SERVER_URL = '523d06922fa4.sn.mynetname.net'
 MQTT_SERVER_PORT = 1182
 MQTT_SERVER_USERNAME = 'smarty'
 MQTT_SERVER_USERPASSWORD = 'sensorium'
