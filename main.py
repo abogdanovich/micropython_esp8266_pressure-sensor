@@ -2,7 +2,7 @@
 # ESP8266 chip
 
 import utils
-from settings import settings
+# from settings import settings
 import utime
 
 lcd = utils.i2c_setup()
