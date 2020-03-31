@@ -6,11 +6,11 @@ Settings for project to track all in one place
 
 # WIFI credentials
 WIFI_LOGIN = ''
-WIFI_SSID = 'nc'
+WIFI_SSID = 'nc-main'
 WIFI_PASSWORD = 'sensorium'
 
 # MQTT connection data
-MQTT_CLIENT_ID = 'esp_micropython_client_id'
+MQTT_CLIENT_ID = 'pressure_sensor'
 MQTT_SERVER_URL = '523d06922fa4.sn.mynetname.net'
 MQTT_SERVER_PORT = 1182
 MQTT_SERVER_USERNAME = 'smarty'
@@ -25,4 +25,7 @@ LCD_HEIGHT = 32
 
 # ADC pin
 ADC_PIN = 0
+
+# pins
+RELAY = 14
 
