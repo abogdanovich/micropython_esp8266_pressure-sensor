@@ -329,8 +329,6 @@ def main():
                     # calculate pressure value
                     current_pressure = calculate_pressure(shifted_pressure_value)
 
-                    # FIXME remove testing value
-                    current_pressure = round(float(utils.randint(3, 5)), 1)
                     check_what_todo_with_pressure(current_pressure, mqtt_client)
 
                     # draw lcd value
