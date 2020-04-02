@@ -12,6 +12,26 @@ from settings import settings
 wlan = network.WLAN(network.STA_IF)
 
 
+pressure_setting_via_mqtt = []
+control_data_via_mqtt = None
+
+
+# setup callback for income messages
+def mqtt_setup_callback(topic, msg):
+    global pressure_setting_via_mqtt
+    global control_data_via_mqtt
+    if topic.decode() == settings.MQTT_SERVER_INFO_SETTINGS:
+        data = msg.decode().split("|")
+        if len(data) == 2 and float(data[0]) > 0.0 and float(data[1]) > 0.0:
+            pressure_setting_via_mqtt = data
+
+    elif topic.decode() == settings.MQTT_SERVER_INFO_CONTROL:
+        # 1 - on - 0 - off
+        data = msg.decode()
+        if int(data) is not None:
+            control_data_via_mqtt = int(data)
+
+
 # run WIFI module and connect to wifi router
 def wifi_setup():
     if not wlan.isconnected():
@@ -28,17 +48,14 @@ def wifi_is_connected():
         wifi_setup()
 
 
-# setup callback for income messages
-def mqtt_setup_callback(topic, msg):
-    return topic, msg
-
-
 # setup MQTT bridge
 def mqtt_setup():
     client = MQTTClient(settings.MQTT_CLIENT_ID, settings.MQTT_SERVER_URL, settings.MQTT_SERVER_PORT)
     client.set_callback(mqtt_setup_callback)
     client.connect()
     client.publish(settings.MQTT_SERVER_INFO_TOPIC, '{} is loaded'.format(settings.MQTT_CLIENT_ID), False, 0)
+    client.subscribe(settings.MQTT_SERVER_INFO_CONTROL)  # topic to control relay
+    client.subscribe(settings.MQTT_SERVER_INFO_SETTINGS)  # topic for income settings low|high values
     return client
 
 
