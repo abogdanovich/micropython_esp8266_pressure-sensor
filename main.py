@@ -172,6 +172,7 @@ def check_high_pressure_value(data: float):
 def calculate_pressure(data: float):
     """Pressure calculation rules"""
     # formula: Pbar=(VALadc*1/(1023*D)-Offset)*Vbar
+    # https://forum.arduino.cc/index.php?topic=568567.0
     pressure_in_voltage = (data * voltage_step)
     pressure_pascal = (3.0 * (pressure_in_voltage - voltage_offset)) * 1000000.0
     current_pressure_value = pressure_pascal / 10e5
