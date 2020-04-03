@@ -9,6 +9,7 @@ WIFI_LOGIN = ''
 WIFI_SSID = 'nc-main'
 WIFI_PASSWORD = 'sensorium'
 
+
 # MQTT connection data
 MQTT_CLIENT_ID = 'pressure_sensor'
 MQTT_SERVER_URL = '523d06922fa4.sn.mynetname.net'

@@ -23,7 +23,8 @@ min_raw_value = 100  # min level for sensor - by default it's 130 - less is like
 max_raw_value = 800  # high pressure level ~8.4 bar
 
 # shifting values
-pressure_shift = 130  # 0.5v for sensor is output by default
+pressure_shift_raw = 130  # 0.5v for sensor is output by default
+voltage_offset = 0.5
 
 # pump working seconds|hours|days
 working_seconds = 0
@@ -170,8 +171,9 @@ def check_high_pressure_value(data: float):
 
 def calculate_pressure(data: float):
     """Pressure calculation rules"""
+    # formula: Pbar=(VALadc*1/(1023*D)-Offset)*Vbar
     pressure_in_voltage = (data * voltage_step)
-    pressure_pascal = (3.0 * (pressure_in_voltage - 0.47)) * 1000000.0
+    pressure_pascal = (3.0 * (pressure_in_voltage - voltage_offset)) * 1000000.0
     current_pressure_value = pressure_pascal / 10e5
     if current_pressure_value < 0.0:
         current_pressure_value = 0.0
@@ -207,25 +209,25 @@ def draw_hline(x, y, width):
 def update_display():
     """Update lcd screen and draw values"""
     msg1 = "{} bar".format(high_pressure_value)
-    lcd.text(msg1, 0, 0)
+    lcd.text(msg1, 0, 2)
 
     msg1 = "{} bar".format(current_pressure)
-    lcd.text(msg1, 0, 10)
+    lcd.text(msg1, 0, 12)
 
     msg1 = "{} bar".format(low_pressure_value)
-    lcd.text(msg1, 0, 20)
+    lcd.text(msg1, 0, 22)
 
     draw_vline(60, 0, width=settings.LCD_HEIGHT)
     # draw_hline(0, settings.LCD_HEIGHT-1, width=settings.LCD_WIDTH)
 
     msg1 = "{} min".format(working_minutes)
-    lcd.text(msg1, 70, 0)
+    lcd.text(msg1, 65, 2)
 
     msg1 = "{} hour".format(working_hours)
-    lcd.text(msg1, 70, 10)
+    lcd.text(msg1, 65, 12)
 
     msg1 = "{} days".format(working_days)
-    lcd.text(msg1, 70, 20)
+    lcd.text(msg1, 65, 22)
 
     if is_pump_working:
         lcd.invert(1)
@@ -312,8 +314,6 @@ def main():
                     # mark system error
                     system_error_status = True
 
-                # get clear current sensor value
-                shifted_pressure_value = raw_pressure - pressure_shift
                 if not check_high_pressure_value(current_pressure) and not system_error_status:
                     # something is wrong - need to inform and turn off pump
                     error_msg = "Error! High pressure sensor!"
@@ -327,7 +327,7 @@ def main():
                     # check what to do with pump
 
                     # calculate pressure value
-                    current_pressure = calculate_pressure(shifted_pressure_value)
+                    current_pressure = calculate_pressure(raw_pressure)
 
                     check_what_todo_with_pressure(current_pressure, mqtt_client)
 
