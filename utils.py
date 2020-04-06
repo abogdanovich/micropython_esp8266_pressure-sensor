@@ -11,7 +11,6 @@ from settings import settings
 
 wlan = network.WLAN(network.STA_IF)
 
-
 pressure_setting_via_mqtt = []
 control_data_via_mqtt = None
 
@@ -37,15 +36,14 @@ def wifi_setup():
     if not wlan.isconnected():
         wlan.active(True)
         wlan.connect(settings.WIFI_SSID, settings.WIFI_PASSWORD)
-        while not wlan.isconnected():
-            pass
-    return wlan.ifconfig()
 
 
 # check that wifi is connected
 def wifi_is_connected():
     if not wlan.isconnected():
         wifi_setup()
+    else:
+        return True
 
 
 # setup MQTT bridge

@@ -17,6 +17,7 @@ MQTT_SERVER_PORT = 1182
 MQTT_SERVER_USERNAME = 'smarty'
 MQTT_SERVER_USERPASSWORD = 'sensorium'
 MQTT_SERVER_INFO_TOPIC = 'smarty/garage/sensor/pressure/info'
+MQTT_SERVER_DATA_TOPIC = 'smarty/garage/sensor/pressure/data'
 MQTT_SERVER_INFO_WORKING_TIME = 'smarty/garage/sensor/pressure/time'
 MQTT_SERVER_INFO_SETTINGS = 'smarty/garage/sensor/pressure/settings'
 MQTT_SERVER_INFO_CONTROL = 'smarty/garage/sensor/pressure/control'
