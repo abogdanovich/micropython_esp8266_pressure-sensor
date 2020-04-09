@@ -3,6 +3,9 @@ Pressure Sensor class handle methods that grab, parse and calculate pressure dat
 from digital pressure sensor.
 """
 import machine
+import utils
+import settings
+import utime
 
 
 class PressureSensor:
@@ -12,6 +15,7 @@ class PressureSensor:
 
     def __init__(self):
         # data files
+        self.uptime = 0 # system uptime in minutes
         self.voltage_step = 0.004887  # 1023 / 5v - voltage_step
         self.low_pressure_value = 4.0  # low pressure level. water accumulator pressure should low_pressure - 10%
         self.high_pressure_value = 5.0  # high pressure - top to turn off relay \ water pump
@@ -34,33 +38,15 @@ class PressureSensor:
         self.working_timer = 0
 
         # alert messages
-        self.system_error_status = False
+        self.sensor_error = False
 
         # working status
         self.is_pump_working = False
-
-        # mqtt \ wifi
-        self.mqtt_client = None
 
         # board pins setup
         self.relay = machine.Pin(settings.RELAY, machine.Pin.OUT)
         self.adc = machine.ADC(settings.ADC_PIN)
         self.lcd = utils.i2c_setup()
-
-    def wifi_connected(self):
-        if utils.wifi_is_connected():
-            return True
-        else:
-            return False
-
-    def mqtt_connected(self):
-        # it's better to implement ping sub-pub via mqtt to have a stable verification
-        if self.wifi_connected() and self.mqtt_client:
-            return True
-        else:
-            # run setup mqtt channel and return False until the connection will be established
-            utils.mqtt_setup()
-            return False
 
     def read_settings_from_file(self):
         """Read file settings and set to variables"""
@@ -69,7 +55,7 @@ class PressureSensor:
             with open(self.settings_file_name, mode="r") as f:
                 data = f.read()
         except OSError as e:
-            with open(self.settings_file_name, mode="rw") as f:
+            with open(self.settings_file_name, mode="w") as f:
                 data = "{}|{}".format(self.low_pressure_value, self.high_pressure_value)
                 f.write(data)
 
@@ -92,15 +78,15 @@ class PressureSensor:
         self.working_hours = int(working_data[1])
         self.working_days = int(working_data[2])
 
-    def calc_pump_working_time(self, pump_started_timer_ms):
+    def calc_pump_working_time(self):
         """Count working time and store into file"""
-
+        pump_working_time = None
         save_to_file = False
-        current_new_working_seconds = round((utime.ticks_ms() - pump_started_timer_ms) / 1000, 0)
+        current_new_working_seconds = round((utime.ticks_ms() - self.working_timer) / 1000)
         self.working_seconds += current_new_working_seconds
         if self.working_seconds >= 60:
             self.working_minutes += 1
-            working_seconds = 0
+            self.working_seconds = 0
             # let's say that we can update our file to do not miss important update
             save_to_file = True
 
@@ -113,48 +99,31 @@ class PressureSensor:
             self.working_hours = 0
 
         if save_to_file:
-            working_data = "{}|{}|{}".format(
+            pump_working_time = "{}|{}|{}".format(
                 self.working_minutes,
                 self.working_hours,
                 self.working_days
             )
-            self.write_working_time(working_data)
-            self.publish_time(working_data)
+            self.write_working_time(pump_working_time)
+        return pump_working_time
 
     def write_working_time(self, data):
         """Write working seconds"""
         try:
-            with open(self.working_time_file_name, mode="rw") as f:
+            with open(self.working_time_file_name, mode="w") as f:
                 f.write(data)
-        except OSError:
-            self.publish_info("Write working time failed!")
+        except OSError as e:
+            print(e)
 
     def save_settings(self, data):
         """Save something into file. For example: save settings like low|high value in float format"""
         try:
-            with open(self.settings_file_name, mode="rw") as f:
+            with open(self.settings_file_name, mode="w") as f:
                 f.write(data)
-        except OSError:
-            self.publish_info("Write settings failed!")
-
-    def publish_data(self):
-        """Send message to mqtt"""
-        # and send data to mqtt broker in case if we have a new value only
-        if self.latest_pressure != self.current_pressure:
-            self.latest_pressure = self.current_pressure
-        if self.mqtt_connected():
-            msg = "{} bar".format(self.current_pressure)
-            self.mqtt_client.publish(settings.MQTT_SERVER_DATA_TOPIC, msg, retain=True)
-
-    def publish_info(self, msg):
-        """Send message to mqtt"""
-        if self.mqtt_connected():
-            self.mqtt_client.publish(settings.MQTT_SERVER_INFO_TOPIC, msg, retain=True)
-
-    def publish_time(self, msg):
-        """Send message to mqtt broker"""
-        if self.mqtt_connected():
-            self.mqtt_client.publish(settings.MQTT_SERVER_INFO_WORKING_TIME, msg, retain=True)
+        except OSError as e:
+            with open(self.settings_file_name, mode="w") as f:
+                data = "{}|{}".format(self.low_pressure_value, self.high_pressure_value)
+                f.write(data)
 
     def turn_OFF_pump(self):
         self.relay.value(0)
@@ -166,19 +135,20 @@ class PressureSensor:
         """Extra verification of water pump to safety switch off in any other non working parameters"""
         if self.raw_value <= self.min_raw_value:
             # switch off relay just to be sure that we're safe
+            self.sensor_error = True
             self.turn_OFF_pump()
             return False
         return True
 
-    def check_high_pressure_value(self, data: float):
+    def check_high_pressure_value(self):
         """That method terminates water pump if something goes wrong with other verification method"""
-        if data > self.high_pressure_value:
+        if self.current_pressure > self.high_pressure_value:
             # if something goes wrong and we have a high pressure - let's stop the whole system
             self.turn_OFF_pump()
             return False
         return True
 
-    def calculate_pressure(self):
+    def convert_pressure(self):
         """Pressure calculation rules"""
         # formula: Pbar=(VALadc*1/(1023*D)-Offset)*Vbar
         # https://forum.arduino.cc/index.php?topic=568567.0
@@ -189,8 +159,9 @@ class PressureSensor:
             current_pressure_value = 0.0
         self.current_pressure = round(current_pressure_value, 1)
 
-    def check_what_todo_with_pressure(self):
+    def check_relay_with_pressure(self):
         """Check what to do with pressure - turnoff, turnon water pump, etc..."""
+        pump_working_time = None
         if self.current_pressure < self.low_pressure_value and not self.is_pump_working:
             self.turn_ON_pump()
             self.is_pump_working = True
@@ -199,8 +170,9 @@ class PressureSensor:
 
         if self.current_pressure >= self.high_pressure_value and self.is_pump_working:
             self.turn_OFF_pump()
-            is_pump_working = False
-            self.calc_pump_working_time(self.working_timer)
+            self.is_pump_working = False
+            pump_working_time = self.calc_pump_working_time()
+        return pump_working_time
 
     def draw_vline(self, x, y, width):
         for i in range(1, width):
@@ -221,17 +193,21 @@ class PressureSensor:
         msg1 = "{} bar".format(self.low_pressure_value)
         self.lcd.text(msg1, 0, 22)
 
-        self.draw_vline(60, 0, width=settings.LCD_HEIGHT)
+        self.draw_vline(58, 0, width=settings.LCD_HEIGHT)
         # draw_hline(0, settings.LCD_HEIGHT-1, width=settings.LCD_WIDTH)
 
-        msg1 = "{} min".format(self.working_minutes)
-        self.lcd.text(msg1, 65, 2)
+        msg1 = "{}|{}|{}".format(
+            self.working_minutes,
+            self.working_hours,
+            self.working_days
+        )
+        self.lcd.text(msg1, 60, 2)
 
-        msg1 = "{} hour".format(self.working_hours)
-        self.lcd.text(msg1, 65, 12)
+        msg1 = "m|h|d"
+        self.lcd.text(msg1, 60, 12)
 
-        msg1 = "{} days".format(self.working_days)
-        self.lcd.text(msg1, 65, 22)
+        msg1 = "up {}".format(round(self.uptime / 60, 2))
+        self.lcd.text(msg1, 60, 22)
 
         if self.is_pump_working:
             self.lcd.invert(1)
@@ -247,32 +223,33 @@ class PressureSensor:
         raw_data.sort()
         self.raw_value = raw_data[round(len(raw_data) / 2)]
 
-    def check_control_via_mqtt(self):
-        if utils.control_data_via_mqtt == 1:
+    def check_mqtt_special_commands(self, connection):
+        if connection.control_data_via_mqtt == 1:
             self.turn_ON_pump()
-            utils.control_data_via_mqtt = None
-        elif utils.control_data_via_mqtt == 0:
+            connection.control_data_via_mqtt = None
+        elif connection.control_data_via_mqtt == 0:
             self.turn_OFF_pump()
-            utils.control_data_via_mqtt = None
+            connection.control_data_via_mqtt = None
 
-    def check_mqtt_settings_update(self):
+    def check_mqtt_settings_update(self, connection):
         """Update settings via MQTT channel"""
-        data_low_high = utils.pressure_setting_via_mqtt
+        data_low_high = connection.pressure_setting_via_mqtt
 
         if data_low_high != [self.low_pressure_value, self.high_pressure_value] and len(data_low_high) == 2:
-            low_pressure_value = float(data_low_high[0])
-            high_pressure_value = float(data_low_high[1])
-            self.save_settings("{}|{}".format(low_pressure_value, high_pressure_value))
+            self.low_pressure_value = float(data_low_high[0])
+            self.high_pressure_value = float(data_low_high[1])
+            self.save_settings("{}|{}".format(self.low_pressure_value, self.high_pressure_value))
 
     def clear_lcd(self):
         self.lcd.fill(0)
 
-    def check_mqtt_updates(self):
-        """Check mqtt channel command\updates\control commands"""
-        if self.mqtt_connected():
-            # check mqtt messages
-            self.mqtt_client.check_msg()
-            # check settings via mqtt
-            self.check_mqtt_settings_update()
-            # check realy control via mqtt
-            self.check_control_via_mqtt()
+    def save_uptime(self):
+        self.uptime += 1
+
+    def is_pressure_updated(self):
+        if self.latest_pressure != self.current_pressure:
+            self.latest_pressure = self.current_pressure
+            return True
+        else:
+            return False
+

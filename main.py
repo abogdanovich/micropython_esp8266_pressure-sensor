@@ -5,79 +5,135 @@ Using mqtt broker we send the data via data protocol and can see what we have
 the actual GPIO pin numbers of ESP8266 controller
 @author: Alex Bogdanovich bogdanovich.alex@gmail.com
 """
-import utils
-from settings import settings
+from sensor import PressureSensor
 import utime
-from pressure_sensor import PressureSensor
+import utils
+import settings
+
+
+def uptime_save_and_send(sensor, connection):
+    sensor.save_uptime()
+    if connection.mqtt_client:
+        try:
+            uptime = "uptime\n{}".format(round(sensor.uptime / 60, 2))
+            connection.publish_data(
+                settings.MQTT_SERVER_INFO_TOPIC,
+                uptime
+            )
+        except OSError as e:
+            connection.mqtt_client = None
+            print("Exception during sending MQTT data {}".format(e))
+
+
+def check_wifi_and_mqtt(connection):
+    connection.wifi_setup()
+    if not connection.mqtt_client:
+        print("Setup mqtt connection...")
+        connection.mqtt_setup()
+
+
+def send_data_via_mqtt(sensor, connection):
+    if connection.mqtt_client:
+        try:
+            connection.check_mqtt_updates()
+
+            if sensor.is_pressure_updated():
+                connection.publish_data(
+                    settings.MQTT_SERVER_DATA_TOPIC,
+                    "{} bar".format(sensor.current_pressure)
+                )
+            working_pump_time = sensor.check_relay_with_pressure()
+            if working_pump_time:
+                connection.publish_data(
+                    settings.MQTT_SERVER_INFO_WORKING_TIME,
+                    working_pump_time
+                )
+        except OSError as e:
+            connection.mqtt_client = None
+            print("Exception during sending MQTT data {}".format(e))
+
+
+def take_pressure_and_decide_what_to_do(sensor, connection):
+    sensor.clear_lcd()
+
+    if connection.mqtt_client:
+        sensor.check_mqtt_special_commands(connection)
+        sensor.check_mqtt_settings_update(connection)
+
+    # read sensor analog data
+    sensor.get_analog_data()
+    # extra verification for high pressure outside of system error status
+    sensor.check_high_pressure_value()
+    sensor.check_sensor_health()
+
+    if sensor.sensor_error:
+        # something is wrong - need to inform and turn off pump
+        display_message = "Error pressure!"
+        sensor.lcd.text(display_message, 0, round(settings.LCD_HEIGHT / 2))
+        # mark system error
+        sensor.sensor_error = True
+
+        try:
+            if connection.mqtt_client:
+                connection.publish_data(
+                    settings.MQTT_SERVER_INFO_TOPIC,
+                    display_message
+                )
+        except OSError as e:
+            connection.mqtt_client = None
+            print("Exception during sending MQTT data {}".format(e))
+
+    else:
+        # calculate pressure value
+        sensor.convert_pressure()
+        # check what to do with pump
+        # todo remove it
+        sensor.current_pressure = float(utils.randint(3, 6))
+        # draw lcd value
+        sensor.update_display()
+
+    sensor.lcd.show()
 
 
 def main():
     """Main method with loop"""
     sensor = PressureSensor()
-    # just to be sure...
-    sensor.turn_OFF_pump()
+    connection = utils.Connection()
 
-    # read working time from file and update display
+    # read working time from file
     sensor.read_working_time()
-    # load values from settings file
+    # load low and high pressure values
     sensor.read_settings_from_file()
 
+    # timer ticks
     timer_pressure = utime.ticks_ms()
-    timer_wifi = utime.ticks_ms()
-    timer_mqtt_check = utime.ticks_ms()
+    system_uptime = utime.ticks_ms()
+    check_mqtt = utime.ticks_ms()
+    mqtt_time = utime.ticks_ms()
+
+    try:
+        connection.check_wifi_connection()
+        connection.mqtt_setup()
+    except OSError as e:
+        print("OSError during wifi and mqtt setup: {}".format(e))
 
     while True:
         try:
-            if utime.ticks_ms() - timer_wifi > 1000:
-                timer_wifi = utime.ticks_ms()
-                # check wifi connection each 1 second
-                if sensor.mqtt_connected():
-                    sensor.publish_info("wifi: connected")
+            if utime.ticks_ms() - system_uptime > 60000:
+                system_uptime = utime.ticks_ms()
+                uptime_save_and_send(sensor, connection)
 
-            if utime.ticks_ms() - timer_mqtt_check > 5000:
-                timer_mqtt_check = utime.ticks_ms()
-                # setup mqtt and check connection
-                if sensor.mqtt_connected():
-                    sensor.publish_info("mqtt: connected")
-                else:
-                    sensor.publish_info("mqtt: init conn")
+            if utime.ticks_ms() - check_mqtt > 5000:
+                check_mqtt = utime.ticks_ms()
+                check_wifi_and_mqtt(connection)
+
+            if utime.ticks_ms() - mqtt_time > 2000:
+                mqtt_time = utime.ticks_ms()
+                send_data_via_mqtt(sensor, connection)
 
             if utime.ticks_ms() - timer_pressure > 200:
                 timer_pressure = utime.ticks_ms()
-                sensor.clear_lcd()
-                sensor.check_mqtt_updates()
-                # read sensor analog data
-                sensor.get_analog_data()
-                display_message = ""
-
-                if not sensor.system_error_status:
-                    if not sensor.check_sensor_health() or not sensor.check_high_pressure_value(
-                            sensor.current_pressure
-                    ):
-                        # something is wrong - need to inform and turn off pump
-                        display_message = "Error! High or Low pressure!"
-                        # mark system error
-                        system_error_status = True
-
-                    else:
-                        # calculate pressure value
-                        sensor.calculate_pressure()
-                        # check what to do with pump
-                        # current_pressure = float(utils.randint(3, 5))
-                        sensor.check_what_todo_with_pressure()
-                        # draw lcd value
-                        sensor.publish_data()
-                else:
-                    display_message = "System Error! Check sensor"
-
-                if display_message:
-                    sensor.lcd.text(display_message, 0, round(settings.LCD_HEIGHT / 2))
-                    if sensor.mqtt_connected():
-                        sensor.publish_info(display_message)
-                else:
-                    sensor.update_display()
-
-                sensor.lcd.show()
+                take_pressure_and_decide_what_to_do(sensor, connection)
 
         except OSError as e:
             utils.module_reset()
