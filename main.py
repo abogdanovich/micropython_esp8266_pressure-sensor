@@ -91,8 +91,6 @@ def take_pressure_and_decide_what_to_do(sensor, connection):
         # calculate pressure value
         sensor.convert_pressure()
         # check what to do with pump
-        # todo remove it
-        sensor.current_pressure = float(utils.randint(3, 6))
         sensor.check_relay_with_pressure()
         # draw lcd value
         sensor.update_display()
@@ -134,7 +132,12 @@ def main():
 
             if utime.ticks_ms() - mqtt_time > 2000:
                 mqtt_time = utime.ticks_ms()
+
+                # TODO only for debug purposes - please remove
+                sensor.current_pressure = float(utils.randint(3, 6))
+
                 send_data_via_mqtt(sensor, connection)
+                # TODO only for debug purposes - please remove
                 print("data: error: {} mqtt: {} wifi: {}".format(
                     sensor.sensor_error,
                     connection.mqtt_client,
