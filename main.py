@@ -42,12 +42,16 @@ def send_data_via_mqtt(sensor, connection):
                     settings.MQTT_SERVER_DATA_TOPIC,
                     "{} bar".format(sensor.current_pressure)
                 )
-            working_pump_time = sensor.check_relay_with_pressure()
-            if working_pump_time:
-                connection.publish_data(
-                    settings.MQTT_SERVER_INFO_WORKING_TIME,
-                    working_pump_time
-                )
+            working_pump_time = "{}|{}|{}".format(
+                sensor.working_minutes,
+                sensor.working_hours,
+                sensor.working_days
+            )
+
+            connection.publish_data(
+                settings.MQTT_SERVER_INFO_WORKING_TIME,
+                working_pump_time
+            )
         except OSError as e:
             connection.mqtt_client = None
             print("Exception during sending MQTT data {}".format(e))
@@ -89,6 +93,7 @@ def take_pressure_and_decide_what_to_do(sensor, connection):
         # check what to do with pump
         # todo remove it
         sensor.current_pressure = float(utils.randint(3, 6))
+        sensor.check_relay_with_pressure()
         # draw lcd value
         sensor.update_display()
 
@@ -130,8 +135,13 @@ def main():
             if utime.ticks_ms() - mqtt_time > 2000:
                 mqtt_time = utime.ticks_ms()
                 send_data_via_mqtt(sensor, connection)
+                print("data: error: {} mqtt: {} wifi: {}".format(
+                    sensor.sensor_error,
+                    connection.mqtt_client,
+                    connection.wlan.isconnected())
+                )
 
-            if utime.ticks_ms() - timer_pressure > 200:
+            if utime.ticks_ms() - timer_pressure > 500:
                 timer_pressure = utime.ticks_ms()
                 take_pressure_and_decide_what_to_do(sensor, connection)
 

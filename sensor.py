@@ -80,7 +80,6 @@ class PressureSensor:
 
     def calc_pump_working_time(self):
         """Count working time and store into file"""
-        pump_working_time = None
         save_to_file = False
         current_new_working_seconds = round((utime.ticks_ms() - self.working_timer) / 1000)
         self.working_seconds += current_new_working_seconds
@@ -105,7 +104,6 @@ class PressureSensor:
                 self.working_days
             )
             self.write_working_time(pump_working_time)
-        return pump_working_time
 
     def write_working_time(self, data):
         """Write working seconds"""
@@ -161,7 +159,6 @@ class PressureSensor:
 
     def check_relay_with_pressure(self):
         """Check what to do with pressure - turnoff, turnon water pump, etc..."""
-        pump_working_time = None
         if self.current_pressure < self.low_pressure_value and not self.is_pump_working:
             self.turn_ON_pump()
             self.is_pump_working = True
@@ -171,8 +168,7 @@ class PressureSensor:
         if self.current_pressure >= self.high_pressure_value and self.is_pump_working:
             self.turn_OFF_pump()
             self.is_pump_working = False
-            pump_working_time = self.calc_pump_working_time()
-        return pump_working_time
+            self.calc_pump_working_time()
 
     def draw_vline(self, x, y, width):
         for i in range(1, width):
@@ -217,10 +213,15 @@ class PressureSensor:
     def get_analog_data(self):
         """Return median for the list of values"""
         raw_data = []
-        for i in range(1, 5):
-            raw_data.append(self.adc.read())
-            utime.sleep_ms(50)
-        raw_data.sort()
+        try:
+            for i in range(1, 5):
+                raw_data.append(self.adc.read())
+                utime.sleep_ms(50)
+            raw_data.sort()
+        except OSError as e:
+            raw_data = [0, 0, 0, 0, 0]
+            print("Get analog data error: {}".format(e))
+
         self.raw_value = raw_data[round(len(raw_data) / 2)]
 
     def check_mqtt_special_commands(self, connection):
