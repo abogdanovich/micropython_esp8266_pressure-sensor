@@ -25,7 +25,7 @@ class MQTTClient:
         self.keepalive = keepalive
         self.lw_topic = None
         self.lw_msg = None
-        self.lw_qos = 0
+        self.lw_qos = 1
         self.lw_retain = False
 
     def _send_str(self, s):
@@ -45,7 +45,7 @@ class MQTTClient:
     def set_callback(self, f):
         self.cb = f
 
-    def set_last_will(self, topic, msg, retain=False, qos=0):
+    def set_last_will(self, topic, msg, retain=False, qos=1):
         assert 0 <= qos <= 2
         assert topic
         self.lw_topic = topic
@@ -167,6 +167,7 @@ class MQTTClient:
     # messages processed internally.
     def wait_msg(self):
         res = self.sock.read(1)
+        # print("lib res: {}".format(res))
         self.sock.setblocking(True)
         if res is None:
             return None
@@ -175,7 +176,7 @@ class MQTTClient:
         if res == b"\xd0":  # PINGRESP
             sz = self.sock.read(1)[0]
             assert sz == 0
-            return None
+            return "ping_response"
         op = res[0]
         if op & 0xf0 != 0x30:
             return op
